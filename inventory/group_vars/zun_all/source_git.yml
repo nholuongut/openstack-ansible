@@ -1,0 +1,31 @@
+---
+# Copyright 2023, Cleura AB
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+### HEAD as of 03.04.2025 ###
+
+## Zun service
+zun_git_repo: "{{ openstack_opendev_base_url }}/openstack/zun"
+zun_git_install_branch: 9cd8458c2233d8a631bf5025fdb31babddbc11b8
+zun_git_track_branch: stable/2025.1
+
+## Zun kuryr service
+zun_kuryr_git_repo: "{{ openstack_opendev_base_url }}/openstack/kuryr-libnetwork"
+zun_kuryr_git_install_branch: 2d32a1ce080a42b7a6100288918540293c3a21a4
+zun_kuryr_git_track_branch: stable/2025.1
+
+## Zun kuryr library
+zun_kuryr_lib_git_repo: "{{ openstack_opendev_base_url }}/openstack/kuryr"
+zun_kuryr_lib_git_install_branch: afcde39df3a5bf78321de01304ea403bc0dd5ccf
+zun_kuryr_lib_git_track_branch: stable/2025.1

@@ -1,0 +1,101 @@
+---
+# Copyright 2016, Rackspace US, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+- name: Clone the role ansible-role-requirements
+  hosts: localhost
+  connection: local
+  user: root
+  gather_facts: false
+  tasks:
+    - name: Gather minimal facts
+      ansible.builtin.setup:
+        gather_subset: '!all'
+
+    - name: Find the git version
+      ansible.builtin.command:
+        cmd: "git --version"
+      register: _git_version
+      changed_when: false
+      tags:
+        - skip_ansible_lint
+
+    - name: Set the git user agent for the deploy host
+      community.general.git_config:
+        scope: system
+        name: http.https://opendev.org/.userAgent
+        value: "{{ 'git/' ~ _git_version.stdout.split(' ')[2] ~ ' (osa/' ~ lookup('env', 'CURRENT_OSA_VERSION') ~ '/deploy)' }}"
+
+    - name: Generate a list of roles to clone
+      vars:
+        _default_roles: "{{ required_roles | rejectattr('name', 'in', user_roles | map(attribute='name')) }}"
+        _user_roles_filtered: "{{ user_roles | rejectattr('src', 'undefined') }}"
+        _role_list: "{{ _default_roles + _user_roles_filtered }}"
+      ansible.builtin.set_fact:
+        clone_roles: "{{ _role_list | selectattr('scm', 'undefined') + _role_list | selectattr('scm', 'eq', 'git') }}"
+
+    - name: Remove target directory if required
+      ansible.builtin.file:
+        path: "{{ item.path | default(role_path_default) }}/{{ item.name | default(item.src | basename) }}"
+        state: absent
+      when:
+        - ((item.path | default(role_path_default) ~ '/' ~ item.name | default(item.src | basename) ~ '/.git') is not directory) or
+          (lookup('env', 'DROP_ROLE_DIRS') | bool is true)
+      with_items: "{{ clone_roles }}"
+
+    - name: Ensure the default roles directory exists
+      ansible.builtin.file:
+        path: "{{ role_path_default }}"
+        state: directory
+        mode: "0755"
+
+    - name: Clone git repos
+      block:
+        - name: Clone git repos (parallel)
+          openstack.osa.git_requirements:
+            default_path: "{{ role_path_default }}"
+            default_depth: "{{ role_clone_default_depth }}"
+            default_version: "master"
+            repo_info: "{{ clone_roles }}"
+            retries: "{{ git_clone_retries }}"
+            delay: "{{ git_clone_retry_delay }}"
+            force: true
+            core_multiplier: 4
+      rescue:
+        - name: Clone git repos (with git)
+          ansible.builtin.git:
+            repo: "{{ item.src }}"
+            dest: "{{ item.path | default(role_path_default) }}/{{ item.name | default(item.src | basename) }}"
+            version: "{{ item.version | default('master') }}"
+            refspec: "{{ item.refspec | default(omit) }}"
+            depth: "{{ item.depth | default(role_clone_default_depth | default(omit)) }}"
+            update: true
+            force: true
+          with_items: "{{ clone_roles }}"
+          register: git_clone
+          until: git_clone is success
+          retries: "{{ git_clone_retries }}"
+          delay: "{{ git_clone_retry_delay }}"
+
+  vars:
+    ansible_python_interpreter: "/opt/ansible-runtime/bin/python"
+    config_dir: "{{ lookup('env', 'OSA_CONFIG_DIR') | default('/etc/openstack_deploy', true) }}"
+    required_roles: "{{ lookup('file', role_file) | from_yaml }}"
+    role_file: "{{ playbook_dir }}/../ansible-role-requirements.yml"
+    role_path_default: '/etc/ansible/roles'
+    user_roles: "{{ lookup('file', user_role_path, errors='ignore') | default([], true) | from_yaml }}"
+    user_role_path: "{{ config_dir ~ '/' ~ (user_role_file | default('')) }}"
+    git_clone_retries: 2
+    git_clone_retry_delay: 5
+    role_clone_default_depth: 20
